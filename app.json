@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "PDF Changer",
+    "slug": "pdfchanger",
+    "scheme": "pdfchanger",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": { "supportsTablet": false, "bundleIdentifier": "com.pdfchanger.mobile" },
+    "android": { "package": "com.pdfchanger.mobile" },
+    "plugins": [
+      "expo-dev-client",
+      ["react-native-document-scanner-plugin", { "cameraPermission": "Allow PDF Changer to scan documents with the camera." }],
+      ["expo-image-picker", { "photosPermission": "Allow PDF Changer to import photos for PDFs.", "cameraPermission": "Allow PDF Changer to photograph document pages." }]
+    ]
+  }
+}
+

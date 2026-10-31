@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  Alert, Image, Modal, SafeAreaView, ScrollView, StyleSheet, Text, TextInput,
+  Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
-import DocumentScanner from 'react-native-document-scanner-plugin';
 import { deletePdf, listLibrary, previewPdf, readBytes, renamePdf, savePdf, type LibraryItem } from './src/files';
 import { cropPage, makePage, normalizedImage, rotatePage, type ImagePage } from './src/images';
+import { addRecentMerge, listRecentMerge, removeRecentMerge, replaceRecentMergeName } from './src/mergeRecent';
 import { imagesToPdf, mergePdfs, pdfPageCount } from './src/pdfCore';
 
 type Screen = 'library' | 'create' | 'merge';
@@ -19,7 +19,7 @@ const emptyEdges: CropEdges = { left: 0, right: 0, top: 0, bottom: 0 };
 function errorText(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (/encrypt|password/i.test(message)) return 'This PDF is password protected and cannot be merged.';
-  if (/pdf|parse|header|catalog|invalid/i.test(message)) return 'A selected file could not be read as a PDF.';
+  if (/PDFDocument|PDF header|PDF catalog|Failed to parse PDF/i.test(message)) return 'A selected file could not be read as a PDF.';
   if (/space|storage|quota|ENOSPC/i.test(message)) return 'There is not enough free storage to finish this action.';
   return message || 'Something went wrong. Please try again.';
 }
@@ -51,6 +51,7 @@ function move<T>(items: T[], index: number, direction: -1 | 1): T[] {
 export default function App() {
   const [screen, setScreen] = useState<Screen>('library');
   const [library, setLibrary] = useState<LibraryItem[]>([]);
+  const [recentMerge, setRecentMerge] = useState<LibraryItem[]>([]);
   const [pages, setPages] = useState<ImagePage[]>([]);
   const [mergeInputs, setMergeInputs] = useState<MergeInput[]>([]);
   const [name, setName] = useState('Document');
@@ -60,7 +61,11 @@ export default function App() {
   const [renameItem, setRenameItem] = useState<LibraryItem | null>(null);
   const [renameText, setRenameText] = useState('');
 
-  const refresh = useCallback(async () => setLibrary(await listLibrary()), []);
+  const refresh = useCallback(async () => {
+    const items = await listLibrary();
+    setLibrary(items);
+    setRecentMerge(await listRecentMerge(items));
+  }, []);
   useEffect(() => { refresh().catch((error) => Alert.alert('Library error', errorText(error))); }, [refresh]);
 
   async function work(label: string, task: () => Promise<void>) {
@@ -73,19 +78,6 @@ export default function App() {
 
   function updatePage(updated: ImagePage) {
     setPages((current) => current.map((page) => page.id === updated.id ? updated : page));
-  }
-
-  function scan() {
-    work('Scanning…', async () => {
-      try {
-        const result = await DocumentScanner.scanDocument();
-        if (result.status === 'cancel' || !result.scannedImages?.length) return;
-        const added = await Promise.all(result.scannedImages.map(makePage));
-        setPages((current) => [...current, ...added]);
-      } catch {
-        throw new Error('Automatic scanning is unavailable right now. Use Camera photo to capture pages offline.');
-      }
-    });
   }
 
   function importImages() {
@@ -157,6 +149,32 @@ export default function App() {
     });
   }
 
+  async function selectLibraryPdf(item: LibraryItem) {
+    if (mergeInputs.some((input) => input.uri === item.uri)) return;
+    const pages = await pdfPageCount(await readBytes(item.uri));
+    setMergeInputs((current) => current.some((input) => input.uri === item.uri) ? current : [
+      ...current,
+      { id: item.uri, name: item.name, uri: item.uri, pages },
+    ]);
+  }
+
+  function moveToMerge(item: LibraryItem) {
+    work('Adding to Merge PDFs…', async () => {
+      await selectLibraryPdf(item);
+      await addRecentMerge(item.name);
+      await refresh();
+      setScreen('merge');
+    });
+  }
+
+  function addFromRecent(item: LibraryItem) {
+    work('Adding PDF…', async () => {
+      await selectLibraryPdf(item);
+      await addRecentMerge(item.name);
+      await refresh();
+    });
+  }
+
   function saveMerge() {
     work('Merging PDFs…', async () => {
       if (mergeInputs.length < 2) throw new Error('Select at least two PDFs.');
@@ -167,13 +185,6 @@ export default function App() {
       setName('Document');
       await refresh();
       setScreen('library');
-    });
-  }
-
-  function share(item: LibraryItem) {
-    work('Opening share sheet…', async () => {
-      if (!await Sharing.isAvailableAsync()) throw new Error('Sharing is unavailable on this device.');
-      await Sharing.shareAsync(item.uri, { mimeType: 'application/pdf' });
     });
   }
 
@@ -188,14 +199,23 @@ export default function App() {
   function confirmDelete(item: LibraryItem) {
     Alert.alert('Delete PDF?', `Delete ${item.name} from this app?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => work('Deleting PDF…', async () => { deletePdf(item); await refresh(); }) },
+      { text: 'Delete', style: 'destructive', onPress: () => work('Deleting PDF…', async () => {
+        deletePdf(item);
+        await removeRecentMerge(item.name);
+        setMergeInputs((current) => current.filter((input) => input.uri !== item.uri));
+        await refresh();
+      }) },
     ]);
   }
 
   function submitRename() {
     if (!renameItem) return;
     work('Renaming PDF…', async () => {
-      renamePdf(renameItem, renameText);
+      const renamed = await renamePdf(renameItem, renameText);
+      await replaceRecentMergeName(renameItem.name, renamed.name);
+      setMergeInputs((current) => current.map((input) => input.uri === renameItem.uri
+        ? { ...input, name: renamed.name, uri: renamed.uri, id: renamed.uri }
+        : input));
       setRenameItem(null);
       await refresh();
     });
@@ -206,8 +226,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.brand}>PDF Changer</Text>
-        <Text style={styles.subtitle}>Your documents stay on this device.</Text>
+        <Image source={require('./assets/logo.png')} style={styles.logo} />
+        <View>
+          <Text style={styles.brand}>PDF Changer</Text>
+          <Text style={styles.subtitle}>Your documents stay on this device.</Text>
+        </View>
       </View>
       <View style={styles.tabs}>
         {([['library', 'Library'], ['create', 'New PDF'], ['merge', 'Merge PDFs']] as const).map(([key, label]) => (
@@ -219,13 +242,13 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         {screen === 'library' && <>
           <Text style={styles.heading}>Your PDFs</Text>
-          {library.length === 0 ? <Text style={styles.empty}>No PDFs yet. Scan a document or import images to make your first one.</Text> : library.map((item) => (
+          {library.length === 0 ? <Text style={styles.empty}>No PDFs yet. Take a camera photo or import images to make your first one.</Text> : library.map((item) => (
             <View key={item.uri} style={styles.card}>
               <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
               <Text style={styles.meta}>{Math.max(1, Math.round(item.size / 1024))} KB</Text>
               <View style={styles.actions}>
                 <Button title="Preview" onPress={() => work('Opening PDF…', async () => openPdf(item))} disabled={!!busy} />
-                <Button title="Share" onPress={() => share(item)} disabled={!!busy} />
+                <Button title="Move to Merge PDFs" onPress={() => moveToMerge(item)} disabled={!!busy} />
                 <Button title="Rename" onPress={() => { setRenameItem(item); setRenameText(item.name.replace(/\.pdf$/i, '')); }} disabled={!!busy} />
                 <Button title="Delete" kind="danger" onPress={() => confirmDelete(item)} disabled={!!busy} />
               </View>
@@ -234,8 +257,8 @@ export default function App() {
         </>}
         {screen === 'create' && <>
           <Text style={styles.heading}>Create from pages</Text>
-          <Text style={styles.body}>Scan documents or choose photos. Adjust and arrange the pages before saving.</Text>
-          <View style={styles.actions}><Button title="Auto scan" kind="primary" onPress={scan} disabled={!!busy} /><Button title="Camera photo" onPress={cameraPhoto} disabled={!!busy} /><Button title="Photos" onPress={importImages} disabled={!!busy} /><Button title="Image files" onPress={importImageFiles} disabled={!!busy} /></View>
+          <Text style={styles.body}>Photograph pages or choose images. Adjust and arrange the pages before saving.</Text>
+          <View style={styles.actions}><Button title="Camera photo" kind="primary" onPress={cameraPhoto} disabled={!!busy} /><Button title="Photos" onPress={importImages} disabled={!!busy} /><Button title="Image files" onPress={importImageFiles} disabled={!!busy} /></View>
           {pages.map((page, index) => (
             <View key={page.id} style={styles.card}>
               <Text style={styles.cardTitle}>Page {index + 1}</Text>
@@ -260,6 +283,15 @@ export default function App() {
           <Text style={styles.heading}>Combine PDFs</Text>
           <Text style={styles.body}>Select two or more PDFs. Move them into the order you want their pages to appear.</Text>
           <Button title="Choose PDFs" kind="primary" onPress={importPdfs} disabled={!!busy} />
+          <Text style={styles.sectionTitle}>Recent</Text>
+          {recentMerge.length === 0 ? <Text style={styles.meta}>PDFs sent from Library will appear here.</Text> : recentMerge.map((item) => {
+            const selected = mergeInputs.some((input) => input.uri === item.uri);
+            return <View key={item.uri} style={styles.recentRow}>
+              <Text style={styles.recentName} numberOfLines={2}>{item.name}</Text>
+              <Button title={selected ? 'Added' : 'Add to merge'} onPress={() => addFromRecent(item)} disabled={!!busy || selected} />
+            </View>;
+          })}
+          <Text style={styles.sectionTitle}>Selected PDFs · {mergeInputs.length}</Text>
           {mergeInputs.map((item, index) => (
             <View key={item.id} style={styles.card}>
               <Text style={styles.cardTitle}>{index + 1}. {item.name}</Text>
@@ -304,11 +336,11 @@ export default function App() {
       </Modal>
 
       <Modal visible={!!renameItem} transparent animationType="fade" onRequestClose={() => setRenameItem(null)}>
-        <View style={styles.modalShade}><View style={styles.modalSheet}>
+        <KeyboardAvoidingView style={styles.modalShade} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><View style={styles.modalSheet}>
           <Text style={styles.heading}>Rename PDF</Text>
-          <TextInput autoFocus style={styles.input} value={renameText} onChangeText={setRenameText} maxLength={80} selectTextOnFocus />
+          <TextInput autoFocus style={styles.input} value={renameText} onChangeText={setRenameText} maxLength={80} selectTextOnFocus returnKeyType="done" onSubmitEditing={submitRename} />
           <View style={styles.actions}><Button title="Cancel" onPress={() => setRenameItem(null)} disabled={!!busy} /><Button title="Save name" kind="primary" onPress={submitRename} disabled={!!busy || !renameText.trim()} /></View>
-        </View></View>
+        </View></KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -316,8 +348,9 @@ export default function App() {
 
 const colors = { background: '#F5F7F5', ink: '#18332D', muted: '#61736D', green: '#146F58', pale: '#E2F3EC', border: '#DCE5E0', red: '#AD3B3B' };
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  header: { paddingHorizontal: 22, paddingTop: 15, paddingBottom: 18 },
+  safe: { flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0 },
+  header: { paddingHorizontal: 22, paddingTop: 15, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo: { width: 48, height: 48, borderRadius: 11 },
   brand: { color: colors.ink, fontSize: 26, fontWeight: '800' },
   subtitle: { color: colors.muted, marginTop: 4, fontSize: 13 },
   tabs: { flexDirection: 'row', marginHorizontal: 16, borderRadius: 14, backgroundColor: '#E8EEEA', padding: 4 },
@@ -327,10 +360,13 @@ const styles = StyleSheet.create({
   activeTabText: { color: colors.ink },
   content: { padding: 20, paddingBottom: 80, gap: 14 },
   heading: { fontSize: 22, color: colors.ink, fontWeight: '800' },
+  sectionTitle: { fontSize: 17, color: colors.ink, fontWeight: '800', marginTop: 8 },
   body: { color: colors.muted, fontSize: 15, lineHeight: 22 },
   empty: { color: colors.muted, fontSize: 15, lineHeight: 23, backgroundColor: 'white', padding: 24, borderRadius: 16 },
   card: { backgroundColor: 'white', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, gap: 8 },
   cardTitle: { color: colors.ink, fontSize: 16, fontWeight: '700' },
+  recentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: 'white', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  recentName: { flex: 1, color: colors.ink, fontSize: 14, fontWeight: '600' },
   meta: { color: colors.muted, fontSize: 13 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 5 },
   button: { backgroundColor: colors.pale, paddingHorizontal: 13, paddingVertical: 10, borderRadius: 10, alignSelf: 'flex-start' },

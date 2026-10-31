@@ -43,22 +43,25 @@ export async function savePdf(name: string, bytes: Uint8Array): Promise<LibraryI
   }
   const destination = uniqueFile(name);
   const temporary = new File(Paths.cache, `pdfchanger-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+  let moved = false;
   try {
     temporary.create();
     await temporary.write(bytes);
-    temporary.move(destination);
+    await temporary.move(destination);
+    moved = true;
     return { name: destination.name, uri: destination.uri, size: destination.size ?? bytes.length, createdAt: destination.creationTime ?? Date.now() };
   } finally {
-    if (temporary.exists) temporary.delete();
+    if (!moved && temporary.exists) temporary.delete();
   }
 }
 
-export function renamePdf(item: LibraryItem, name: string) {
+export async function renamePdf(item: LibraryItem, name: string) {
   if (!name.trim()) throw new Error('Enter a name for this PDF.');
   const current = new File(item.uri);
   if (!current.exists) throw new Error('This PDF is no longer available.');
   const destination = uniqueFile(name, item.uri);
-  if (destination.uri !== item.uri) current.move(destination);
+  if (destination.uri !== item.uri) await current.move(destination);
+  return { name: destination.name, uri: destination.uri };
 }
 
 export function deletePdf(item: LibraryItem) {

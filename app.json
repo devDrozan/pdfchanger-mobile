@@ -4,14 +4,35 @@
     "slug": "pdfchanger",
     "scheme": "pdfchanger",
     "version": "0.1.0",
+    "icon": "./assets/logo.png",
     "orientation": "portrait",
-    "ios": { "supportsTablet": false, "bundleIdentifier": "com.pdfchanger.mobile" },
-    "android": { "package": "com.pdfchanger.mobile" },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pdfchanger.mobile",
+      "appleTeamId": "6BJ6GQU845"
+    },
+    "android": {
+      "package": "com.pdfchanger.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#18332D"
+      }
+    },
     "plugins": [
       "expo-dev-client",
-      ["react-native-document-scanner-plugin", { "cameraPermission": "Allow PDF Changer to scan documents with the camera." }],
-      ["expo-image-picker", { "photosPermission": "Allow PDF Changer to import photos for PDFs.", "cameraPermission": "Allow PDF Changer to photograph document pages." }]
-    ]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow PDF Changer to import photos for PDFs.",
+          "cameraPermission": "Allow PDF Changer to photograph document pages.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "65da324d-5886-4f75-8caa-33a3b91f5fe7"
+      }
+    }
   }
 }
-

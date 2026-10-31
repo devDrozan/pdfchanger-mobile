@@ -2,6 +2,8 @@
 
 Photograph pages or import photos, arrange and edit them, and save one PDF. You can also select multiple PDFs, put them in order, and merge them. Completed PDFs stay in the app's local library, where you can preview, rename, delete, or send them to Merge PDFs. Document processing works offline.
 
+Use the **English / မြန်မာ** control above the tabs to switch the interface language. The selection is saved on the device and restored when the app restarts.
+
 ## Run the app
 
 Install Node.js 22.13+ and the Android or iOS development tools for your device. In this folder, run `npm install`. Run `npm run ios` or `npm run android` to create a development build. After the first build, use `npm start` for the development server.
@@ -28,10 +30,10 @@ The Android command finds the Android Studio JDK and SDK automatically; set `JAV
 
 ### Android App Bundle
 
-The `production` EAS profile builds a signed `.aab` for Google Play and increments the Android version code. This folder is not yet a Git repository, so run:
+The `production` EAS profile builds a signed `.aab` for Google Play and increments the Android version code. Run:
 
 ```sh
-EAS_NO_VCS=1 eas build --platform android --profile production
+eas build --platform android --profile production
 ```
 
 Sign in to the Expo account linked to this project before building. Download the finished bundle from the build page shown by EAS CLI. An `.aab` is for store upload; use `npm run android:build` for an installable debug APK. Building does not submit the app to Google Play.

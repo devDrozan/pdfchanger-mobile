@@ -4,7 +4,7 @@ export type Language = 'en' | 'my';
 
 const translations = {
   en: {
-    subtitle: 'Your documents stay on this device.', library: 'Library', newPdf: 'New PDF', mergePdfs: 'Merge PDFs',
+    subtitle: 'Your documents stay on this device.', language: 'Language', library: 'Library', newPdf: 'New PDF', mergePdfs: 'Merge PDFs',
     yourPdfs: 'Your PDFs', emptyLibrary: 'No PDFs yet. Take a camera photo or import images to make your first one.',
     preview: 'Preview', moveToMerge: 'Move to Merge PDFs', rename: 'Rename', delete: 'Delete',
     createFromPages: 'Create from pages', createHelp: 'Photograph pages or choose images. Adjust and arrange the pages before saving.',
@@ -37,10 +37,10 @@ const translations = {
     emptySelectedPdf: 'A selected PDF has no pages.', smallCrop: 'The crop area is too small.',
   },
   my: {
-    subtitle: 'သင့်စာရွက်စာတမ်းများကို ဤစက်တွင်သာ သိမ်းဆည်းထားသည်။', library: 'စာကြည့်တိုက်', newPdf: 'PDF အသစ်', mergePdfs: 'PDF ပေါင်းရန်',
+    subtitle: 'သင့်စာရွက်စာတမ်းများကို ဤစက်တွင်သာ သိမ်းဆည်းထားသည်။', language: 'ဘာသာစကား', library: 'စုစည်းမှုများ', newPdf: 'PDF အသစ်', mergePdfs: 'PDF ပေါင်းရန်',
     yourPdfs: 'သင့် PDF များ', emptyLibrary: 'PDF မရှိသေးပါ။ ကင်မရာဖြင့် ရိုက်ပါ သို့မဟုတ် ပုံများရွေး၍ ပထမဆုံး PDF ကို ဖန်တီးပါ။',
     preview: 'ကြည့်ရန်', moveToMerge: 'ပေါင်းရန် ပို့မည်', rename: 'အမည်ပြောင်း', delete: 'ဖျက်ရန်',
-    createFromPages: 'စာမျက်နှာများမှ ဖန်တီးရန်', createHelp: 'စာမျက်နှာများကို ဓာတ်ပုံရိုက်ပါ သို့မဟုတ် ပုံများရွေးပါ။ မသိမ်းမီ ဖြတ်တောက်၊ လှည့်၊ အစီအစဉ်ပြောင်းနိုင်သည်။',
+    createFromPages: 'PDF ဖိုင်ဖန်တီးရန်', createHelp: 'စာမျက်နှာများကို ဓာတ်ပုံရိုက်ပါ သို့မဟုတ် ပုံများရွေးပါ။ မသိမ်းမီ ဖြတ်တောက်၊ လှည့်၊ အစီအစဉ်ပြောင်းနိုင်သည်။',
     cameraPhoto: 'ဓာတ်ပုံရိုက်', photos: 'ဓာတ်ပုံများ', imageFiles: 'ပုံဖိုင်များ', page: 'စာမျက်နှာ', pages: 'စာမျက်နှာ',
     crop: 'ဖြတ်တောက်', rotate: 'လှည့်ရန်', remove: 'ဖယ်ရှား', pdfName: 'PDF အမည်', document: 'စာရွက်စာတမ်း',
     moveUp: 'အပေါ်သို့ ရွှေ့', moveDown: 'အောက်သို့ ရွှေ့',

@@ -2,11 +2,13 @@
 
 Photograph pages or import photos, arrange and edit them, and save one PDF. You can also select multiple PDFs, put them in order, and merge them. Completed PDFs stay in the app's local library, where you can preview, rename, delete, or send them to Merge PDFs. Document processing works offline.
 
-Use the **English / မြန်မာ** control above the tabs to switch the interface language. The selection is saved on the device and restored when the app restarts.
+At launch, the app shows its logo for at least three seconds while the library and saved language load, then fades into the main screen. Use the labeled **Language / ဘာသာစကား** selector above the tabs to switch between **English** and **မြန်မာ**. The selection is saved on the device and restored when the app restarts. Expo development builds may show the development launcher first; check the final splash appearance in an internal or production build.
 
 ## Run the app
 
 Install Node.js 22.13+ and the Android or iOS development tools for your device. In this folder, run `npm install`. Run `npm run ios` or `npm run android` to create a development build. After the first build, use `npm start` for the development server.
+
+The splash screen adds a native module and native launch assets. Rebuild the development app once after pulling this change; a JavaScript reload alone cannot update the native launch screen.
 
 ### iPhone simulator on macOS
 

@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput,
+  Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
+import * as SplashScreen from 'expo-splash-screen';
 import { deletePdf, listLibrary, previewPdf, readBytes, renamePdf, savePdf, type LibraryItem } from './src/files';
 import { cropPage, makePage, normalizedImage, rotatePage, type ImagePage } from './src/images';
 import { addRecentMerge, listRecentMerge, removeRecentMerge, replaceRecentMergeName } from './src/mergeRecent';
@@ -16,6 +17,11 @@ type Screen = 'library' | 'create' | 'merge';
 type MergeInput = { id: string; name: string; uri: string; pages: number };
 type CropEdges = { left: number; right: number; top: number; bottom: number };
 const emptyEdges: CropEdges = { left: 0, right: 0, top: 0, bottom: 0 };
+const launchStartedAt = Date.now();
+const minimumSplashTimeMs = 3000;
+
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.setOptions({ fade: true, duration: 200 });
 
 function errorText(error: unknown, language: Language) {
   const message = error instanceof Error ? error.message : String(error);
@@ -80,6 +86,10 @@ export default function App() {
   const [language, setLanguage] = useState<Language>('en');
   const [languageReady, setLanguageReady] = useState(false);
   const [languageSaving, setLanguageSaving] = useState(false);
+  const [libraryReady, setLibraryReady] = useState(false);
+  const [splashOverlayReady, setSplashOverlayReady] = useState(false);
+  const [showSplashOverlay, setShowSplashOverlay] = useState(true);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
   const t = (key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values);
 
   useEffect(() => {
@@ -106,7 +116,23 @@ export default function App() {
     setLibrary(items);
     setRecentMerge(await listRecentMerge(items));
   }, []);
-  useEffect(() => { refresh().catch((error) => Alert.alert(t('libraryError'), errorText(error, language))); }, [refresh, language]);
+  useEffect(() => {
+    refresh().catch((error) => Alert.alert(t('libraryError'), errorText(error, language)))
+      .finally(() => setLibraryReady(true));
+  }, [refresh, language]);
+
+  useEffect(() => {
+    if (!languageReady || !libraryReady || !splashOverlayReady) return;
+    let cancelled = false;
+    const remainingMs = Math.max(0, minimumSplashTimeMs - (Date.now() - launchStartedAt));
+    const timer = setTimeout(async () => {
+      await SplashScreen.hideAsync().catch(() => {});
+      if (cancelled) return;
+      Animated.timing(splashOpacity, { toValue: 0, duration: 400, useNativeDriver: true })
+        .start(() => setShowSplashOverlay(false));
+    }, remainingMs);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [languageReady, libraryReady, splashOverlayReady, splashOpacity]);
 
   async function work(label: string, task: () => Promise<void>) {
     if (busy) return;
@@ -262,10 +288,12 @@ export default function App() {
   }
 
   const cropPageItem = pages.find((item) => item.id === cropId);
-  if (!languageReady) return <SafeAreaView style={styles.safe} />;
+  const appReady = languageReady && libraryReady;
 
   return (
     <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" />
+      {appReady && <>
       <View style={styles.header}>
         <Image source={require('./assets/logo.png')} style={styles.logo} />
         <View style={styles.headerCopy}>
@@ -274,6 +302,7 @@ export default function App() {
         </View>
       </View>
       <View style={styles.languageRow}>
+        <Text style={styles.languageLabel}>{t('language')}</Text>
         <View style={styles.languageToggle}>
           {([['en', 'English'], ['my', 'မြန်မာ']] as const).map(([code, label]) => (
             <TouchableOpacity key={code} accessibilityRole="button" accessibilityLabel={label}
@@ -394,6 +423,13 @@ export default function App() {
           <View style={styles.actions}><Button title={t('cancel')} onPress={() => setRenameItem(null)} disabled={!!busy} /><Button title={t('saveName')} kind="primary" onPress={submitRename} disabled={!!busy || !renameText.trim()} /></View>
         </View></KeyboardAvoidingView>
       </Modal>
+      </>}
+      {showSplashOverlay && <Animated.View
+        accessibilityRole="image" accessibilityLabel="PDF Changer"
+        onLayout={() => setSplashOverlayReady(true)}
+        style={[styles.splashOverlay, { opacity: splashOpacity }]}>
+        <Image source={require('./assets/logo.png')} style={styles.splashLogo} resizeMode="contain" />
+      </Animated.View>}
     </SafeAreaView>
   );
 }
@@ -401,12 +437,15 @@ export default function App() {
 const colors = { background: '#F5F7F5', ink: '#18332D', muted: '#61736D', green: '#146F58', pale: '#E2F3EC', border: '#DCE5E0', red: '#AD3B3B' };
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0 },
-  header: { paddingHorizontal: 22, paddingTop: 15, paddingBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  splashOverlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+  splashLogo: { width: 190, height: 190 },
+  header: { paddingHorizontal: 22, paddingTop: 15, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1 },
   logo: { width: 48, height: 48, borderRadius: 11 },
   brand: { color: colors.ink, fontSize: 26, fontWeight: '800' },
   subtitle: { color: colors.muted, marginTop: 4, fontSize: 13, lineHeight: 20 },
-  languageRow: { alignItems: 'flex-end', paddingHorizontal: 20, paddingBottom: 12 },
+  languageRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20, paddingBottom: 12 },
+  languageLabel: { color: colors.muted, fontSize: 13, fontWeight: '700', flexShrink: 1 },
   languageToggle: { flexDirection: 'row', backgroundColor: '#E8EEEA', padding: 3, borderRadius: 10 },
   languageOption: { paddingHorizontal: 12, paddingTop: 5, paddingBottom: 9, borderRadius: 8 },
   languageOptionActive: { backgroundColor: 'white' },

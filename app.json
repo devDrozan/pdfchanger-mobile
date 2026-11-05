@@ -21,6 +21,15 @@
     "plugins": [
       "expo-dev-client",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F5F7F5",
+          "image": "./assets/logo.png",
+          "imageWidth": 190,
+          "resizeMode": "contain"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Allow PDF Changer to import photos for PDFs.",

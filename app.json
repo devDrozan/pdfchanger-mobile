@@ -36,7 +36,15 @@
           "cameraPermission": "Allow PDF Changer to photograph document pages.",
           "microphonePermission": false
         }
-      ]
+      ],
+      
+[
+  "react-native-google-mobile-ads",
+  {
+    "androidAppId": "ca-app-pub-7752680457121386~2062810026"
+  }
+]
+
     ],
     "extra": {
       "eas": {

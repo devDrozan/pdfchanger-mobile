@@ -2,14 +2,16 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
+const bannerUnitId = __DEV__ ? TestIds.ADAPTIVE_BANNER : 'ca-app-pub-7752680457121386/6757779681';
+
 export default function MergeTestBannerAd() {
   return (
     <View style={styles.container}>
       <BannerAd
-        unitId={TestIds.ADAPTIVE_BANNER}
+        unitId={bannerUnitId}
         size={BannerAdSize.LARGE_ANCHORED_ADAPTIVE_BANNER}
-        onAdLoaded={() => console.info('Merge test banner loaded')}
-        onAdFailedToLoad={(error) => console.warn('Merge test banner failed to load:', error)}
+        onAdLoaded={() => console.info('Merge banner loaded')}
+        onAdFailedToLoad={(error) => console.warn('Merge banner failed to load:', error)}
       />
     </View>
   );

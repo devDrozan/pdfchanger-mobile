@@ -3,13 +3,15 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { BannerAd, BannerAdSize, TestIds } from 'react-native-google-mobile-ads';
 
+const bannerUnitId = __DEV__ ? TestIds.BANNER : 'ca-app-pub-7752680457121386/6757779681';
+
 export default function TestBannerAd() {
   return (
     <View style={styles.container}>
       <BannerAd
-        unitId={TestIds.BANNER}
+        unitId={bannerUnitId}
         size={BannerAdSize.BANNER}
-        onAdFailedToLoad={(error) => console.warn('Test banner failed to load:', error)}
+        onAdFailedToLoad={(error) => console.warn('Library banner failed to load:', error)}
       />
     </View>
   );

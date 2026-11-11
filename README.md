@@ -1,6 +1,6 @@
 # PDF Changer mobile app
 
-Photograph pages or import photos, arrange and edit them, and save one PDF. You can also select multiple PDFs, put them in order, and merge them. A processing popup appears when you save a merged PDF and stays for about ten seconds while the result is prepared. An adaptive test ad can appear below the progress message when consent allows it; merging does not wait for the ad. Completed PDFs stay in the app's local library, where you can preview, rename, delete, or send them to Merge PDFs. Document processing works offline.
+Photograph pages or import photos, arrange and edit them, and save one PDF. You can also select multiple PDFs, put them in order, and merge them. A processing popup appears when you save a merged PDF and stays for about ten seconds while the result is prepared. An adaptive banner ad can appear below the progress message when consent allows it; merging does not wait for the ad. Completed PDFs stay in the app's local library, where you can preview, rename, delete, or send them to Merge PDFs. Document processing works offline.
 
 At launch, the app shows its logo for at least five seconds while the library and saved language load, then fades into the main screen. Use the labeled **Language / ဘာသာစကား** selector above the tabs to switch between **English** and **မြန်မာ**. The selection is saved on the device and restored when the app restarts. Expo development builds may show the development launcher first; check the final splash appearance in an internal or production build.
 
@@ -12,11 +12,11 @@ The splash screen adds a native module and native launch assets. Rebuild the dev
 
 Settings links to the public [Privacy Policy](https://devdrozan.github.io/pdfchanger/). Opening a PDF asks before handing it to a device viewer; if that fails, the app asks before opening the system share sheet. Android builds disable Auto Backup and exclude the app's document files from legacy cloud backup and modern cloud/device transfers through an Expo config plugin. Rebuild the native app after changing this configuration. Existing backups made by older versions are outside the app's control.
 
-### Test banner ads
+### Banner ads
 
-The Library shows a Google sample banner at the bottom when consent permits ad requests. It uses Google's test ad unit on both platforms and does not earn revenue. Ads need a network connection; creating and managing PDFs still work offline. The iOS build uses Google's sample AdMob app ID for this test. Replace the sample banner unit and iOS app ID with your own IDs before publishing a release.
+The Library and Merge loading screen show banners when consent permits ad requests. Development builds use Google's test banner units. Release builds use `ca-app-pub-7752680457121386/6757779681` for both banner placements. Ads need a network connection; creating and managing PDFs still work offline. The iOS app config still uses Google's sample AdMob app ID, so configure an iOS production app ID and matching iOS banner unit before an iOS release.
 
-AdMob is a native dependency, so rebuild the development app with `npm run android` or `npm run ios` after pulling these changes. Expo Go and older development builds cannot run this banner. If the banner stays blank, check the device's network connection, complete any consent prompt, and look for `Test banner failed to load` in the Metro log.
+AdMob is a native dependency, so rebuild the development app with `npm run android` or `npm run ios` after pulling these changes. Expo Go and older development builds cannot run these banners. If a banner stays blank, check the device's network connection, complete any consent prompt, and look for `Library banner failed to load` or `Merge banner failed to load` in the Metro log.
 
 To test EEA consent on an Android emulator, first publish an applicable GDPR message with Accept, Reject, and Manage choices for this Android app in AdMob **Privacy & messaging**. Development builds request the EEA test geography on Android emulators. Open the app to answer the form, then use **Settings → Reset EEA test consent** to repeat each choice. When the consent service requires an entry point, **Settings → Privacy Choices** reopens the options form. Check the Metro log and Library banner after each choice. The reset control and EEA test geography are disabled in production builds. If AdMob reports that no form is configured for the app ID, the form choices cannot be tested until the message is published.
 

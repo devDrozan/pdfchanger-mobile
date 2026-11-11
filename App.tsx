@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput,
+  ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, Linking, Modal, Platform, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput,
   TouchableOpacity, View,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
@@ -12,16 +12,39 @@ import { cropPage, makePage, normalizedImage, rotatePage, type ImagePage } from 
 import { addRecentMerge, listRecentMerge, removeRecentMerge, replaceRecentMergeName } from './src/mergeRecent';
 import { imagesToPdf, mergePdfs, pdfPageCount } from './src/pdfCore';
 import { loadLanguage, saveLanguage, translate, type Language, type TranslationKey } from './src/i18n';
-
-type Screen = 'library' | 'create' | 'merge';
+import TestBannerAd from "./src/components/TestBannerAd";
+import MergeTestBannerAd from './src/components/MergeTestBannerAd';
+import mobileAds, {
+  AdsConsent,
+  AdsConsentDebugGeography,
+  AdsConsentPrivacyOptionsRequirementStatus,
+  type AdsConsentInfo,
+  type AdsConsentInfoOptions,
+} from "react-native-google-mobile-ads";
+type Screen = 'library' | 'create' | 'merge' | 'settings';
 type MergeInput = { id: string; name: string; uri: string; pages: number };
 type CropEdges = { left: number; right: number; top: number; bottom: number };
 const emptyEdges: CropEdges = { left: 0, right: 0, top: 0, bottom: 0 };
 const launchStartedAt = Date.now();
-const minimumSplashTimeMs = 3000;
+const minimumSplashTimeMs = 5000;
+const minimumMergePopupTimeMs = 10000;
+const privacyPolicyUrl = 'https://devdrozan.github.io/pdfchanger/';
+
+function consentOptions(): AdsConsentInfoOptions {
+  return isAndroidEmulatorConsentTest()
+    ? { debugGeography: AdsConsentDebugGeography.EEA }
+    : {};
+}
+
+function isAndroidEmulatorConsentTest(): boolean {
+  if (!__DEV__ || Platform.OS !== 'android') return false;
+  const fingerprint = Platform.constants.Fingerprint.toLowerCase();
+  return fingerprint.includes('sdk_gphone') || fingerprint.startsWith('generic/') || fingerprint.startsWith('sdk/');
+}
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 SplashScreen.setOptions({ fade: true, duration: 200 });
+
 
 function errorText(error: unknown, language: Language) {
   const message = error instanceof Error ? error.message : String(error);
@@ -79,6 +102,7 @@ export default function App() {
   const [mergeInputs, setMergeInputs] = useState<MergeInput[]>([]);
   const [name, setName] = useState('Document');
   const [busy, setBusy] = useState('');
+  const [mergeProcessing, setMergeProcessing] = useState(false);
   const [cropId, setCropId] = useState<string | null>(null);
   const [edges, setEdges] = useState<CropEdges>(emptyEdges);
   const [renameItem, setRenameItem] = useState<LibraryItem | null>(null);
@@ -91,6 +115,56 @@ export default function App() {
   const [showSplashOverlay, setShowSplashOverlay] = useState(true);
   const splashOpacity = useRef(new Animated.Value(1)).current;
   const t = (key: TranslationKey, values?: Record<string, string | number>) => translate(language, key, values);
+  const [adsReady, setAdsReady] = useState(false);
+  const [privacyOptionsRequired, setPrivacyOptionsRequired] = useState(false);
+  const [consentBusy, setConsentBusy] = useState(false);
+
+  async function applyConsentInfo(info: AdsConsentInfo) {
+    setPrivacyOptionsRequired(info.privacyOptionsRequirementStatus === AdsConsentPrivacyOptionsRequirementStatus.REQUIRED);
+    setAdsReady(false);
+    if (info.canRequestAds) {
+      await mobileAds().initialize();
+      setAdsReady(true);
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+    AdsConsent.gatherConsent(consentOptions()).then(async (info) => {
+      if (active) await applyConsentInfo(info);
+    }).catch(async (error) => {
+      console.warn('AdMob consent failed:', error);
+      try {
+        const info = await AdsConsent.getConsentInfo();
+        if (active) await applyConsentInfo(info);
+      } catch (fallbackError) { console.warn('AdMob consent fallback failed:', fallbackError); }
+    });
+    return () => { active = false; };
+  }, []);
+
+  async function openPrivacyChoices() {
+    if (consentBusy || !privacyOptionsRequired) return;
+    setConsentBusy(true);
+    try { await applyConsentInfo(await AdsConsent.showPrivacyOptionsForm()); }
+    catch (error) {
+      console.warn('Privacy choices failed:', error);
+      Alert.alert(t('actionError'), t('privacyChoicesUnavailable'));
+    } finally { setConsentBusy(false); }
+  }
+
+  async function resetTestConsent() {
+    if (!isAndroidEmulatorConsentTest() || consentBusy) return;
+    setConsentBusy(true);
+    setAdsReady(false);
+    try {
+      AdsConsent.reset();
+      await applyConsentInfo(await AdsConsent.gatherConsent(consentOptions()));
+    } catch (error) {
+      console.warn('EEA consent test failed:', error);
+      Alert.alert(t('actionError'), t('privacyChoicesUnavailable'));
+    } finally { setConsentBusy(false); }
+  }
+
 
   useEffect(() => {
     loadLanguage().then((saved) => {
@@ -244,13 +318,23 @@ export default function App() {
   function saveMerge() {
     work(t('mergingPdfs'), async () => {
       if (mergeInputs.length < 2) throw new Error('Select at least two PDFs.');
-      const inputs = [];
-      for (const item of mergeInputs) inputs.push(await readBytes(item.uri));
-      await savePdf(name, await mergePdfs(inputs));
-      setMergeInputs([]);
-      setName(t('document'));
-      await refresh();
-      setScreen('library');
+      const startedAt = Date.now();
+      setMergeProcessing(true);
+      try {
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+        const inputs = [];
+        for (const item of mergeInputs) inputs.push(await readBytes(item.uri));
+        await savePdf(name, await mergePdfs(inputs));
+        await refresh();
+        await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, minimumMergePopupTimeMs - (Date.now() - startedAt))));
+        setMergeInputs([]);
+        setName(t('document'));
+        setScreen('library');
+      } catch (error) {
+        setTimeout(() => Alert.alert(t('actionError'), errorText(error, language)), 250);
+      } finally {
+        setMergeProcessing(false);
+      }
     });
   }
 
@@ -258,8 +342,23 @@ export default function App() {
     try { await previewPdf(item); }
     catch {
       if (!await Sharing.isAvailableAsync()) throw new Error('No PDF viewer or sharing app is available on this device.');
-      await Sharing.shareAsync(item.uri, { mimeType: 'application/pdf' });
+      Alert.alert(t('shareInsteadTitle'), t('shareInsteadMessage'), [
+        { text: t('cancel'), style: 'cancel' },
+        { text: t('sharePdf'), onPress: () => { void work(t('openingPdf'), () => Sharing.shareAsync(item.uri, { mimeType: 'application/pdf' })); } },
+      ]);
     }
+  }
+
+  function confirmOpenPdf(item: { name: string; uri: string }) {
+    Alert.alert(t('openPdfTitle'), t('openPdfMessage'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('openPdf'), onPress: () => { void work(t('openingPdf'), () => openPdf(item)); } },
+    ]);
+  }
+
+  async function openPrivacyPolicy() {
+    try { await Linking.openURL(privacyPolicyUrl); }
+    catch { Alert.alert(t('actionError'), t('policyUnavailable')); }
   }
 
   function confirmDelete(item: LibraryItem) {
@@ -300,6 +399,11 @@ export default function App() {
           <Text style={styles.brand}>PDF Changer</Text>
           <Text style={styles.subtitle}>{t('subtitle')}</Text>
         </View>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('settings')}
+          accessibilityState={{ selected: screen === 'settings' }} onPress={() => setScreen('settings')}
+          style={[styles.settingsButton, __DEV__ && Platform.OS === 'android' && styles.settingsButtonDev]}>
+          <Text style={styles.settingsIcon}>⚙</Text>
+        </TouchableOpacity>
       </View>
       <View style={styles.languageRow}>
         <Text style={styles.languageLabel}>{t('language')}</Text>
@@ -328,7 +432,7 @@ export default function App() {
               <Text style={styles.cardTitle} numberOfLines={2}>{item.name}</Text>
               <Text style={styles.meta}>{Math.max(1, Math.round(item.size / 1024))} KB</Text>
               <View style={styles.actions}>
-                <Button title={t('preview')} onPress={() => work(t('openingPdf'), async () => openPdf(item))} disabled={!!busy} />
+                <Button title={t('openPdf')} onPress={() => confirmOpenPdf(item)} disabled={!!busy} />
                 <Button title={t('moveToMerge')} onPress={() => moveToMerge(item)} disabled={!!busy} />
                 <Button title={t('rename')} onPress={() => { setRenameItem(item); setRenameText(item.name.replace(/\.pdf$/i, '')); }} disabled={!!busy} />
                 <Button title={t('delete')} kind="danger" onPress={() => confirmDelete(item)} disabled={!!busy} />
@@ -378,7 +482,7 @@ export default function App() {
               <Text style={styles.cardTitle}>{index + 1}. {item.name}</Text>
               <Text style={styles.meta}>{item.pages} {t(item.pages === 1 ? 'page' : 'pages')}</Text>
               <View style={styles.actions}>
-                <Button title={t('preview')} onPress={() => work(t('openingPdf'), async () => openPdf(item))} disabled={!!busy} />
+                <Button title={t('openPdf')} onPress={() => confirmOpenPdf(item)} disabled={!!busy} />
                 <Button title="↑" accessibilityLabel={t('moveUp')} onPress={() => setMergeInputs((current) => move(current, index, -1))} disabled={!!busy || index === 0} />
                 <Button title="↓" accessibilityLabel={t('moveDown')} onPress={() => setMergeInputs((current) => move(current, index, 1))} disabled={!!busy || index === mergeInputs.length - 1} />
                 <Button title={t('remove')} kind="danger" onPress={() => setMergeInputs((current) => current.filter((source) => source.id !== item.id))} disabled={!!busy} />
@@ -391,8 +495,33 @@ export default function App() {
             <Button title={t('saveMerged', { count: mergeInputs.reduce((total, item) => total + item.pages, 0) })} kind="primary" onPress={saveMerge} disabled={!!busy} />
           </View>}
         </>}
+        {screen === 'settings' && <>
+          <Text style={styles.heading}>{t('settings')}</Text>
+          <Text style={styles.sectionTitle}>{t('privacy')}</Text>
+          <Text style={styles.body}>{t('privacySharingHelp')}</Text>
+          <Text style={styles.body}>{t('privacyChoicesHelp')}</Text>
+          <Button title={t('privacyPolicy')} onPress={() => { void openPrivacyPolicy(); }} />
+          {privacyOptionsRequired
+            ? <Button title={t('privacyChoices')} kind="primary" onPress={openPrivacyChoices} disabled={consentBusy} />
+            : <Text style={styles.meta}>{t('privacyChoicesNotRequired')}</Text>}
+          {isAndroidEmulatorConsentTest() && <Button title={t('resetTestConsent')} onPress={resetTestConsent} disabled={consentBusy} />}
+        </>}
       </ScrollView>
-      {!!busy && <View style={styles.busy}><Text style={styles.busyText}>{busy}</Text></View>}
+      {screen === 'library' && adsReady && <TestBannerAd />}
+      {!!busy && !mergeProcessing && <View style={styles.busy}><Text style={styles.busyText}>{busy}</Text></View>}
+
+      <Modal visible={mergeProcessing} transparent animationType="fade" onRequestClose={() => {}}>
+        <View style={styles.mergePopupShade} accessibilityViewIsModal>
+          <View style={styles.mergePopup}>
+            <ActivityIndicator size="large" color={colors.green} />
+            <Text style={styles.mergePopupTitle} accessibilityLiveRegion="polite">{t('mergingPdfs')}</Text>
+            <Text style={styles.mergePopupBody}>{t('mergeProcessingHelp')}</Text>
+          </View>
+          {adsReady && <View style={styles.mergeAdArea}>
+            <MergeTestBannerAd />
+          </View>}
+        </View>
+      </Modal>
 
       <Modal visible={!!cropPageItem} transparent animationType="slide" onRequestClose={() => setCropId(null)}>
         <View style={styles.modalShade}><View style={styles.modalSheet}>
@@ -441,6 +570,9 @@ const styles = StyleSheet.create({
   splashLogo: { width: 190, height: 190 },
   header: { paddingHorizontal: 22, paddingTop: 15, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerCopy: { flex: 1 },
+  settingsButton: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.pale },
+  settingsButtonDev: { marginRight: 56 },
+  settingsIcon: { color: colors.ink, fontSize: 24 },
   logo: { width: 48, height: 48, borderRadius: 11 },
   brand: { color: colors.ink, fontSize: 26, fontWeight: '800' },
   subtitle: { color: colors.muted, marginTop: 4, fontSize: 13, lineHeight: 20 },
@@ -480,6 +612,11 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: colors.border, backgroundColor: 'white', color: colors.ink, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 14, borderRadius: 10, fontSize: 16, minWidth: 200, includeFontPadding: false, textAlignVertical: 'center' },
   busy: { position: 'absolute', bottom: 20, alignSelf: 'center', backgroundColor: colors.ink, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 20 },
   busyText: { color: 'white', fontWeight: '700' },
+  mergePopupShade: { flex: 1, backgroundColor: '#0008', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  mergePopup: { width: '100%', maxWidth: 340, alignItems: 'center', gap: 16, backgroundColor: colors.background, padding: 28, borderRadius: 20 },
+  mergePopupTitle: { color: colors.ink, fontSize: 20, lineHeight: 30, fontWeight: '800', textAlign: 'center', includeFontPadding: false },
+  mergePopupBody: { color: colors.muted, fontSize: 15, lineHeight: 24, textAlign: 'center', includeFontPadding: false },
+  mergeAdArea: { position: 'absolute', bottom: 20, left: 16, right: 16, alignItems: 'center' },
   modalShade: { flex: 1, backgroundColor: '#0008', justifyContent: 'flex-end' },
   modalSheet: { backgroundColor: colors.background, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 22, paddingTop: 18, paddingBottom: 22, gap: 12, maxHeight: '90%' },
   cropPreview: { width: '100%', maxHeight: 260, alignSelf: 'center', backgroundColor: '#DFE8E2', overflow: 'hidden' },

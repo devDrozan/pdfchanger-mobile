@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.pdfchanger.mobile",
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#18332D"
@@ -20,6 +21,7 @@
     },
     "plugins": [
       "expo-dev-client",
+      "./plugins/withAndroidPdfBackupRules",
       [
         "expo-splash-screen",
         {
@@ -37,14 +39,14 @@
           "microphonePermission": false
         }
       ],
-      
-[
-  "react-native-google-mobile-ads",
-  {
-    "androidAppId": "ca-app-pub-7752680457121386~2062810026"
-  }
-]
-
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-7752680457121386~2062810026",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "delayAppMeasurementInit": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
